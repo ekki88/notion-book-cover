@@ -27,25 +27,40 @@ async function getBookCover(title) {
     return data.documents[0].thumbnail || null;
   }
   
-// 3. 노션에 표지 업데이트하기
-async function updateNotionPage(pageId, coverUrl) {
-  await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-    method: 'patch',
-    headers: {
-      Authorization: `Bearer ${notionToken}`,
-      'Notion-Version': '2022-06-28',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      cover: {
-        type: "external",
-        external: {
-          url: coverUrl
+  async function updateNotionPage(pageId, coverUrl) {
+    const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+      method: 'patch',
+      headers: {
+        Authorization: `Bearer ${notionToken}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        cover: {
+          type: "external",
+          external: {
+            url: coverUrl
+          }
         }
-      }
-    })
-  });
+      })
+    });
+  
+    const data = await res.json();
+    console.log("📦 Notion API 응답:", JSON.stringify(data, null, 2)); // 🔥 여기 추가
+  }
+  
+
+// 4. 전체 흐름
+async function run(title, pageId) {
+  const coverUrl = await getBookCover(title);
+  if (coverUrl) {
+    await updateNotionPage(pageId, coverUrl);
+    console.log(`✅ ${title} - 표지 업데이트 완료`);
+  } else {
+    console.log(`❌ ${title} - 표지 찾을 수 없음`);
+  }
 }
+
 
 // 4. 전체 흐름
 async function run(title, pageId) {
