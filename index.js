@@ -49,19 +49,6 @@ async function getBookCover(title) {
     console.log("📦 Notion API 응답:", JSON.stringify(data, null, 2)); // 🔥 여기 추가
   }
   
-
-// 4. 전체 흐름
-async function run(title, pageId) {
-  const coverUrl = await getBookCover(title);
-  if (coverUrl) {
-    await updateNotionPage(pageId, coverUrl);
-    console.log(`✅ ${title} - 표지 업데이트 완료`);
-  } else {
-    console.log(`❌ ${title} - 표지 찾을 수 없음`);
-  }
-}
-
-
 // 4. 전체 흐름
 async function run(title, pageId) {
   const coverUrl = await getBookCover(title);
