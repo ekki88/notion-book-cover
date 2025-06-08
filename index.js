@@ -6,30 +6,56 @@ const notionToken = process.env.NOTION_TOKEN;
 const databaseId = process.env.DATABASE_ID;
 const kakaoApiKey = process.env.KAKAO_API_KEY;
 
-// 책 제목으로 카카오 API에서 표지 가져오기
-async function getBookCover(title) {
+// 📘 카카오 API에서 책 표지와 줄거리 가져오기
+async function getBookData(title) {
   const res = await fetch(`https://dapi.kakao.com/v3/search/book?query=${encodeURIComponent(title)}`, {
     headers: {
       Authorization: kakaoApiKey,
     },
   });
+
   const data = await res.json();
+  // console.log("📦 카카오 API 응답:", JSON.stringify(data, null, 2));
 
-  if (!data.documents || data.documents.length === 0) {
-    console.log(`❌ "${title}" 검색 결과 없음`);
-    return null;
-  }
+  if (!data.documents || data.documents.length === 0) return null;
 
-  const book = data.documents[0];
-  console.log("📦 카카오 API 응답:", JSON.stringify(data, null, 2));
+  const { thumbnail, contents } = data.documents[0];
   return {
-    coverUrl: book.thumbnail || null,
-    summary: book.contents || "",
+    coverUrl: thumbnail || null,
+    description: contents ? truncateText(contents, 200) : null,
   };
 }
 
-// 노션에 커버 업데이트
-async function updateNotionPage(pageId, coverUrl, summary) {
+// ✂️ 줄거리 자르기 (1800자 + ...)
+function truncateText(text, maxLength = 1800) {
+  if (!text) return "";
+  return text.length <= maxLength ? text : text.slice(0, maxLength) + "...";
+}
+
+// 📝 노션 페이지 업데이트
+async function updateNotionPage(pageId, coverUrl, description) {
+  const body = {
+    properties: {},
+  };
+
+  if (description) {
+    body.properties.줄거리 = {
+      rich_text: [
+        {
+          type: "text",
+          text: { content: description },
+        },
+      ],
+    };
+  }
+
+  if (coverUrl) {
+    body.cover = {
+      type: "external",
+      external: { url: coverUrl },
+    };
+  }
+
   const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "patch",
     headers: {
@@ -37,33 +63,14 @@ async function updateNotionPage(pageId, coverUrl, summary) {
       "Notion-Version": "2022-06-28",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      cover: {
-        type: "external",
-        external: {
-          url: coverUrl,
-        },
-      },
-      properties: {
-        줄거리: {
-          rich_text: [
-            {
-              type: "text",
-              text: {
-                content: summary.slice(0, 2000), // 줄거리 최대 2000자 제한
-              },
-            },
-          ],
-        },
-      },
-    }),
+    body: JSON.stringify(body),
   });
 
   const data = await res.json();
-  console.log("📦 Notion API 응답:", JSON.stringify(data, null, 2));
+  // console.log("📦 Notion API 응답:", JSON.stringify(data, null, 2));
 }
 
-// 전체 흐름 자동 실행
+// 🔄 전체 자동화 흐름
 async function run() {
   const res = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
     method: "POST",
@@ -79,22 +86,25 @@ async function run() {
 
   for (const page of pages) {
     const pageId = page.id;
-    const cover = page.cover;
     const title = page.properties.이름?.title?.[0]?.plain_text;
-  
-    // 표지가 완전히 없는 경우에만
-    if (!cover && title) {
-      console.log(`🔍 표지 없는 항목: "${title}"`);
+    const cover = page.cover;
+    const description = page.properties.줄거리?.rich_text?.[0]?.plain_text;
+
+    const hasCover = !!cover;
+    const hasDescription = !!description && description.trim() !== "";
+
+    if (title && (!hasCover || !hasDescription)) {
+      console.log(`📚 "${title}" 커버 또는 줄거리 없음 → 업데이트 시도`);
       const bookData = await getBookData(title);
 
-      if (bookData?.coverUrl) {
-        await updateNotionPage(pageId, bookData.coverUrl, bookData.summary);
-        console.log(`✅ "${title}" 표지 및 줄거리 업데이트 완료`);
+      if (bookData?.coverUrl || bookData?.description) {
+        await updateNotionPage(pageId, bookData.coverUrl, bookData.description);
+        console.log(`✅ "${title}" 업데이트 완료`);
       } else {
-        console.log(`❌ "${title}" 책 정보 못 찾음`);
+        console.log(`❌ "${title}" 정보 못 찾음`);
       }
     } else {
-      console.log(`⏩ "${title}" 은(는) 이미 표지 있음, 건너뜀`);
+      console.log(`⏩ "${title}" 커버 및 줄거리 모두 있음 → 건너뜀`);
     }
   }
 }
