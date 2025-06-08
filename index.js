@@ -14,18 +14,22 @@ async function getBookCover(title) {
     },
   });
   const data = await res.json();
-  console.log("📦 카카오 API 응답:", JSON.stringify(data, null, 2));
 
   if (!data.documents || data.documents.length === 0) {
     console.log(`❌ "${title}" 검색 결과 없음`);
     return null;
   }
 
-  return data.documents[0].thumbnail || null;
+  const book = data.documents[0];
+  console.log("📦 카카오 API 응답:", JSON.stringify(data, null, 2));
+  return {
+    coverUrl: book.thumbnail || null,
+    summary: book.contents || "",
+  };
 }
 
 // 노션에 커버 업데이트
-async function updateNotionPage(pageId, coverUrl) {
+async function updateNotionPage(pageId, coverUrl, summary) {
   const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
     method: "patch",
     headers: {
@@ -38,6 +42,18 @@ async function updateNotionPage(pageId, coverUrl) {
         type: "external",
         external: {
           url: coverUrl,
+        },
+      },
+      properties: {
+        줄거리: {
+          rich_text: [
+            {
+              type: "text",
+              text: {
+                content: summary.slice(0, 2000), // 줄거리 최대 2000자 제한
+              },
+            },
+          ],
         },
       },
     }),
@@ -69,13 +85,13 @@ async function run() {
     // 표지가 완전히 없는 경우에만
     if (!cover && title) {
       console.log(`🔍 표지 없는 항목: "${title}"`);
-      const coverUrl = await getBookCover(title);
-  
-      if (coverUrl) {
-        await updateNotionPage(pageId, coverUrl);
-        console.log(`✅ "${title}" 표지 업데이트 완료`);
+      const bookData = await getBookData(title);
+
+      if (bookData?.coverUrl) {
+        await updateNotionPage(pageId, bookData.coverUrl, bookData.summary);
+        console.log(`✅ "${title}" 표지 및 줄거리 업데이트 완료`);
       } else {
-        console.log(`❌ "${title}" 표지 못 찾음`);
+        console.log(`❌ "${title}" 책 정보 못 찾음`);
       }
     } else {
       console.log(`⏩ "${title}" 은(는) 이미 표지 있음, 건너뜀`);
